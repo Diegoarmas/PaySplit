@@ -1,0 +1,48 @@
+import * as dotenv from "dotenv";
+import express from "express";
+import cors from "cors";
+import { connectToDatabase } from "./database";
+import { userRouter } from "./routes/users.route";
+import { userGroupRouter } from "./routes/user-group.route";
+import { participacionRouter } from "./routes/participacion.route";
+import { GastosRouter } from "./routes/gastos.route";
+import { notificationsRouter } from "./routes/notifications.route";
+import { groupInvitationsRouter } from "./routes/group-invitations.route";
+
+
+// Load environment variables from the .env file, where the ATLAS_URI is configured
+dotenv.config();
+
+const { ATLAS_URI } = process.env;
+
+if (!ATLAS_URI) {
+  console.error(
+    "No ATLAS_URI environment variable has been defined in config.env"
+  );
+  process.exit(1);
+}
+
+connectToDatabase(ATLAS_URI)
+  .then(() => {
+    const app = express();
+  app.use(cors());
+  // body parsers - ensure incoming JSON/form bodies are parsed into req.body
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use("/users", userRouter);
+  // mount additional routers for groups and participations
+  app.use("/user-group", userGroupRouter);
+  app.use("/participacion", participacionRouter);
+  // mount gastos router
+  app.use("/gastos", GastosRouter);
+  // mount notifications router
+  app.use("/notifications", notificationsRouter);
+  // mount group invitations router
+  app.use("/group-invitations", groupInvitationsRouter);
+
+    // start the Express server
+    app.listen(5200, () => {
+      console.log(`Server running at http://localhost:5200...`);
+    });
+  })
+  .catch((error) => console.error(error));

@@ -1,0 +1,76 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { RouterTestingModule } from '@angular/router/testing';
+import { Component } from '@angular/core';
+import { BalanceComponent } from './balance.component';
+import { AuthService } from '../../auth/auth.service';
+import { ActivatedRoute } from '@angular/router';
+import { of } from 'rxjs';
+import { NotificationService } from '../../core/notification.service';
+
+class MockAuthService {
+  getUser() {
+    return { _id: 'u1', nombre: 'Me' };
+  }
+  getMembersForGroup(id: string) {
+    return of([
+      { _id: 'u1', nombre: 'Me' },
+      { _id: 'u2', nombre: 'Other' },
+    ]);
+  }
+  getBalancesForGroup(id: string) {
+    return of([{ userId: 'u1', paid: 10, share: 5, balance: 5 }]);
+  }
+  getDetailedBalancesForGroup(id: string) {
+    return of([{ userId: 'u1', paid: 10, share: 5, balance: 5 }]);
+  }
+}
+
+class MockNotificationService {
+  createNotification() {
+    return of({});
+  }
+}
+
+describe('BalanceComponent', () => {
+  let component: BalanceComponent;
+  let fixture: ComponentFixture<BalanceComponent>;
+
+  beforeEach(async () => {
+    @Component({
+      selector: 'test-dummy',
+      standalone: true,
+      template: '',
+    })
+    class DummyComponent {}
+
+    await TestBed.configureTestingModule({
+      imports: [
+        BalanceComponent,
+        NoopAnimationsModule,
+        RouterTestingModule.withRoutes([
+          { path: 'group/:id', component: DummyComponent },
+        ]),
+        DummyComponent,
+      ],
+      providers: [
+        { provide: AuthService, useClass: MockAuthService },
+        { provide: NotificationService, useClass: MockNotificationService },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: { get: () => 'g1' } } },
+        },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(BalanceComponent);
+    component = fixture.componentInstance;
+  });
+
+  it('should create and load balances', () => {
+    fixture.detectChanges();
+    expect(component).toBeTruthy();
+    expect(component.balances.length).toBeGreaterThan(0);
+    expect(component.abs(-5)).toBe(5);
+  });
+});

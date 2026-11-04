@@ -1,0 +1,18 @@
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: paysplit-server:dev
+    container_name: paysplit-server
+    # Server will read environment variables from ./server/.env
+    # Edit ./server/.env (or create it from .env.example) to point ATLAS_URI appropriately
+    env_file:
+      - ./server/.env
+    ports:
+      - "5200:5200"
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+    driver: local

@@ -1,0 +1,453 @@
+import * as mongodb from "mongodb";
+import { User } from "./users";
+import { SharedAccount } from "./shared-account";
+import { UserGroup } from "./user-group";
+import { Gasto } from "./gastos";
+import { Participacion } from "./participacion";
+import { Notification } from "./notifications";
+import { GroupInvitation } from "./group-invitation";
+
+
+export const collections: {
+  users?: mongodb.Collection<User>;
+  sharedAccounts?: mongodb.Collection<SharedAccount>;
+  gastos?: mongodb.Collection<Gasto>;
+  userGroups?: mongodb.Collection<UserGroup>;
+  participaciones?: mongodb.Collection<Participacion>;
+  notifications?: mongodb.Collection<Notification>;
+  groupInvitations?: mongodb.Collection<GroupInvitation>;
+} = {};
+
+export async function connectToDatabase(uri: string) {
+  const client = new mongodb.MongoClient(uri);
+  await client.connect();
+  // keep reference to client so tests and shutdown logic can close it
+  mongoClient = client;
+
+  const db = client.db("meanStackExample");
+  await applySchemaValidation(db);
+
+  const usersCollection = db.collection<User>("users");
+  collections.users = usersCollection;
+  const sharedAccountsCollection = db.collection<SharedAccount>("shared_accounts");
+  collections.sharedAccounts = sharedAccountsCollection;
+  const gastosCollection = db.collection<Gasto>("gastos");
+  collections.gastos = gastosCollection;
+  const userGroupsCollection = db.collection<UserGroup>("user_groups");
+  collections.userGroups = userGroupsCollection;
+  const participacionesCollection = db.collection<Participacion>("participaciones");
+  collections.participaciones = participacionesCollection;
+  const notificationsCollection = db.collection<Notification>("notifications");
+  collections.notifications = notificationsCollection;
+  const groupInvitationsCollection = db.collection<GroupInvitation>("group_invitations");
+  collections.groupInvitations = groupInvitationsCollection;
+
+
+    try {
+        await collections.userGroups?.createIndex({ id_usuario: 1, id_grupo: 1 }, { unique: true, background: true });
+    } catch (err) {
+        console.warn("Could not create index on user_groups (id_usuario, id_grupo)", err);
+    }
+
+    try {
+        await collections.gastos?.createIndex({ id_grupo: 1 }, { background: true });
+    } catch (err) {
+        console.warn("Could not create index on gastos.id_grupo", err);
+    }
+
+    try {
+        await collections.participaciones?.createIndex({ id_gasto: 1 }, { background: true });
+    } catch (err) {
+        console.warn("Could not create index on participaciones.id_gasto", err);
+    }
+
+    try {
+        await collections.groupInvitations?.createIndex({ id_invitado: 1, estado: 1 }, { background: true, sparse: true });
+    } catch (err) {
+        console.warn("Could not create index on group_invitations (id_invitado, estado)", err);
+    }
+    
+    // Drop old problematic index if it exists
+    try {
+        console.log("Attempting to drop old group_invitations index...");
+        await collections.groupInvitations?.dropIndex("id_grupo_1_id_invitado_1");
+        console.log("Dropped old index id_grupo_1_id_invitado_1");
+    } catch (err: any) {
+        if (err.code !== 27) { // 27 = index not found
+            console.warn("Error dropping index:", err.message);
+        }
+    }
+    
+    try {
+        // Create new index with partialFilterExpression to only apply to non-null id_invitado
+        await collections.groupInvitations?.createIndex(
+            { id_grupo: 1, id_invitado: 1 }, 
+            { 
+                unique: true, 
+                background: true, 
+                sparse: true, 
+                partialFilterExpression: { 
+                    id_invitado: { $type: "string", $ne: null } 
+                } 
+            }
+        );
+        console.log("Created partial unique index on group_invitations (id_grupo, id_invitado)");
+    } catch (err) {
+        console.warn("Could not create partial index on group_invitations (id_grupo, id_invitado)", err);
+    }
+    
+    try {
+        await collections.groupInvitations?.createIndex({ token: 1 }, { unique: true, background: true, sparse: true, partialFilterExpression: { token: { $exists: true } } });
+    } catch (err) {
+        console.warn("Could not create index on group_invitations (token)", err);
+    }
+}
+
+let mongoClient: mongodb.MongoClient | null = null;
+
+export async function closeDatabase() {
+    if (mongoClient) {
+        try {
+            await mongoClient.close();
+        } catch (err) {
+            console.warn('Error closing MongoClient', err);
+        }
+        mongoClient = null;
+    }
+}
+
+async function applySchemaValidation(db: mongodb.Db) {
+    // First, try to remove old validation from group_invitations
+    try {
+        const collections = await db.listCollections({ name: 'group_invitations' }).toArray();
+        if (collections.length > 0) {
+            console.log("Removing old group_invitations collection validator...");
+            try {
+                await db.command({ collMod: 'group_invitations', validator: {} });
+            } catch (e) {
+                console.log("Could not remove validator:", (e as any).message);
+            }
+        }
+    } catch (err) {
+        console.log("group_invitations not found or error listing collections");
+    }
+
+    const jsonSchema = {
+        $jsonSchema: {
+            bsonType: "object",
+            required: ["nombre", "email", "password_hash", "fecha_registro", "preferencia_tema"],
+            additionalProperties: true,
+            properties: {
+                _id: {},
+                id_usuario: {
+                    bsonType: ["string", "int"],
+                    description: "Optional external id (UUID or INT)",
+                },
+                nombre: {
+                    bsonType: "string",
+                    description: "'nombre' is required and is a string",
+                },
+                email: {
+                    bsonType: "string",
+                    description: "'email' is required and is a string",
+                },
+                password_hash: {
+                    bsonType: "string",
+                    description: "'password_hash' is required and is a string",
+                },
+                foto_perfil: {
+                    bsonType: ["string", "null"],
+                    description: "Optional URL to profile picture",
+                },
+                google_id: {
+                    bsonType: "string",
+                    description: "Optional Google OAuth ID for Google Sign-In",
+                },
+                fecha_registro: {
+                    bsonType: "date",
+                    description: "'fecha_registro' is required and is a date",
+                },
+                preferencia_tema: {
+                    bsonType: "string",
+                    description: "'preferencia_tema' is required and is either 'light', 'dark', 'claro' or 'oscuro'",
+                    enum: ["light", "dark", "claro", "oscuro"],
+                },
+                moneda_preferida: {
+                    bsonType: ["string", "null"],
+                    description: "Optional preferred currency code (EUR, USD, GBP)",
+                },
+                amigos: {
+                    bsonType: "array",
+                    description: "Optional list of friend user ids (ObjectId or string)",
+                    items: {
+                        bsonType: ["objectId", "string"],
+                    },
+                },
+                peticiones_amistad: {
+                    bsonType: "array",
+                    description: "Optional list of pending friend request user ids (ObjectId or string)",
+                    items: {
+                        bsonType: ["objectId", "string"],
+                    },
+                },
+            },
+        },
+    };
+
+    await db.command({
+        collMod: "users",
+        validator: jsonSchema
+    }).catch(async (error: mongodb.MongoServerError) => {
+        if (error.codeName === "NamespaceNotFound") {
+            await db.createCollection("users", {validator: jsonSchema});
+        }
+    });
+
+    const sharedAccountsJsonSchema = {
+        $jsonSchema: {
+            bsonType: "object",
+            required: ["nombre", "moneda", "creador_id", "fecha_creacion"],
+            additionalProperties: false,
+            properties: {
+                _id: {},
+                id_grupo: {
+                    bsonType: ["string", "int"],
+                    description: "Optional external id (UUID or INT)",
+                },
+                nombre: {
+                    bsonType: "string",
+                    description: "'nombre' is required and is a string",
+                },
+                descripcion: {
+                    bsonType: ["string", "null"],
+                    description: "Optional description",
+                },
+                moneda: {
+                    bsonType: "string",
+                    description: "3-letter ISO currency code",
+                },
+                creador_id: {
+                    bsonType: "string",
+                    description: "Reference to the creator user id",
+                },
+                fecha_creacion: {
+                    bsonType: "date",
+                    description: "'fecha_creacion' is required and is a date",
+                },
+                foto_grupo: {
+                    bsonType: ["string", "null"],
+                    description: "Optional base64 encoded group image",
+                },
+            },
+        },
+    };
+
+    await db.command({
+        collMod: "shared_accounts",
+        validator: sharedAccountsJsonSchema,
+    }).catch(async (error: mongodb.MongoServerError) => {
+        if (error.codeName === "NamespaceNotFound") {
+            await db.createCollection("shared_accounts", { validator: sharedAccountsJsonSchema });
+        }
+    });
+
+    // Schema validation for gastos
+    const gastosJsonSchema = {
+        $jsonSchema: {
+            bsonType: "object",
+            required: ["id_grupo", "descripcion", "monto", "id_pagador", "fecha", "categoria"],
+            additionalProperties: false,
+            properties: {
+                _id: {},
+                id_gasto: {
+                    bsonType: ["string", "int"],
+                    description: "Optional external id (UUID or INT)",
+                },
+                id_grupo: {
+                    bsonType: ["string", "int"],
+                    description: "Reference to group id",
+                },
+                descripcion: {
+                    bsonType: "string",
+                    description: "Expense description",
+                },
+                monto: {
+                    bsonType: ["double", "int", "decimal"],
+                    description: "Amount of the expense",
+                },
+                id_pagador: {
+                    bsonType: ["string", "int"],
+                    description: "Payer user id",
+                },
+                fecha: {
+                    bsonType: "date",
+                    description: "Date of the expense",
+                },
+                categoria: {
+                    bsonType: "string",
+                    description: "Category of the expense",
+                },
+            },
+        },
+    };
+
+    await db.command({
+        collMod: "gastos",
+        validator: gastosJsonSchema,
+    }).catch(async (error: mongodb.MongoServerError) => {
+        if (error.codeName === "NamespaceNotFound") {
+            await db.createCollection("gastos", { validator: gastosJsonSchema });
+        }
+    });
+
+    // Schema validation for user_groups (relations)
+    const userGroupsJsonSchema = {
+        $jsonSchema: {
+            bsonType: "object",
+            required: ["id_usuario", "id_grupo", "rol", "fecha_union"],
+            additionalProperties: false,
+            properties: {
+                _id: {},
+                id_usuario: {
+                    bsonType: ["string", "int"],
+                    description: "Reference to user id",
+                },
+                id_grupo: {
+                    bsonType: ["string", "int"],
+                    description: "Reference to group id",
+                },
+                rol: {
+                    bsonType: "string",
+                    enum: ["owner", "admin", "miembro"],
+                    description: "Role of the user in the group",
+                },
+                fecha_union: {
+                    bsonType: "date",
+                    description: "Date when joined",
+                },
+            },
+        },
+    };
+
+    await db.command({
+        collMod: "user_groups",
+        validator: userGroupsJsonSchema,
+    }).catch(async (error: mongodb.MongoServerError) => {
+        if (error.codeName === "NamespaceNotFound") {
+            await db.createCollection("user_groups", { validator: userGroupsJsonSchema });
+        }
+    });
+
+    // Schema validation for participaciones
+    const participacionesJsonSchema = {
+        $jsonSchema: {
+            bsonType: "object",
+            required: ["id_usuario", "id_gasto", "monto_asignado"],
+            additionalProperties: false,
+            properties: {
+                _id: {},
+                id_participacion: {
+                    bsonType: ["string", "int"],
+                    description: "Optional external id",
+                },
+                id_usuario: {
+                    bsonType: ["string", "int"],
+                    description: "Reference to user id",
+                },
+                id_gasto: {
+                    bsonType: ["string", "int"],
+                    description: "Reference to gasto id",
+                },
+                monto_asignado: {
+                    bsonType: ["double", "int", "decimal"],
+                    description: "Assigned amount for this participant",
+                },
+            },
+        },
+    };
+
+    await db.command({
+        collMod: "participaciones",
+        validator: participacionesJsonSchema,
+    }).catch(async (error: mongodb.MongoServerError) => {
+        if (error.codeName === "NamespaceNotFound") {
+            await db.createCollection("participaciones", { validator: participacionesJsonSchema });
+        }
+    });
+
+    // Schema validation for group_invitations
+    const groupInvitationsJsonSchema = {
+        $jsonSchema: {
+            bsonType: "object",
+            required: ["id_grupo", "id_invitador", "estado", "fecha_invitacion"],
+            additionalProperties: true,
+            properties: {
+                _id: {},
+                id_grupo: {
+                    bsonType: "string",
+                    description: "Reference to group id",
+                },
+                id_invitado: {
+                    bsonType: ["string", "null"],
+                    description: "Reference to invited user id (null for invitation links)",
+                },
+                id_invitador: {
+                    bsonType: "string",
+                    description: "Reference to inviter user id",
+                },
+                tipo: {
+                    bsonType: "string",
+                    enum: ["directa", "enlace"],
+                    description: "Type of invitation",
+                },
+                estado: {
+                    bsonType: "string",
+                    enum: ["pendiente", "aceptada", "rechazada"],
+                    description: "Invitation status",
+                },
+                token: {
+                    bsonType: "string",
+                    description: "Unique token for invitation links",
+                },
+                fecha_invitacion: {
+                    bsonType: "date",
+                    description: "Date when invitation was sent",
+                },
+                fecha_respuesta: {
+                    bsonType: "date",
+                    description: "Date when invitation was responded (optional)",
+                },
+                usos_maximos: {
+                    bsonType: ["int", "null"],
+                    description: "Maximum uses for invitation link (optional)",
+                },
+                usos_actuales: {
+                    bsonType: "int",
+                    description: "Current uses count for invitation link",
+                },
+                expira_en: {
+                    bsonType: ["date", "null"],
+                    description: "Expiration date for invitation link (optional)",
+                },
+            },
+        },
+    };
+
+    await db.command({
+        collMod: "group_invitations",
+        validator: groupInvitationsJsonSchema,
+    }).catch(async (error: mongodb.MongoServerError) => {
+        if (error.codeName === "NamespaceNotFound") {
+            await db.createCollection("group_invitations", { validator: groupInvitationsJsonSchema });
+        } else if (error.codeName === "BadValue" || error.code === 121) {
+            // Si hay error de validación, intentar eliminar y recrear
+            try {
+                await db.collection("group_invitations").drop();
+                await db.createCollection("group_invitations", { validator: groupInvitationsJsonSchema });
+                console.log("Recreated group_invitations collection with new schema");
+            } catch (dropErr) {
+                console.error("Could not recreate group_invitations collection:", dropErr);
+            }
+        }
+    });
+}
