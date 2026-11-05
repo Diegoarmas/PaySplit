@@ -85,9 +85,8 @@ export async function connectToDatabase(uri: string) {
             { 
                 unique: true, 
                 background: true, 
-                sparse: true, 
                 partialFilterExpression: { 
-                    id_invitado: { $type: "string", $ne: null } 
+                    id_invitado: { $type: "string" }
                 } 
             }
         );
@@ -97,7 +96,7 @@ export async function connectToDatabase(uri: string) {
     }
     
     try {
-        await collections.groupInvitations?.createIndex({ token: 1 }, { unique: true, background: true, sparse: true, partialFilterExpression: { token: { $exists: true } } });
+        await collections.groupInvitations?.createIndex({ token: 1 }, { unique: true, background: true, partialFilterExpression: { token: { $exists: true } } });
     } catch (err) {
         console.warn("Could not create index on group_invitations (token)", err);
     }

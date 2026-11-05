@@ -45,7 +45,7 @@ export class ClickOutsideDirective {
   }
 
   @HostListener('document:keydown.escape', ['$event'])
-  onEscape(ev: KeyboardEvent) {
+  onEscape(ev: Event) {
     if (!this.appClickOutsideEnabled) return;
     if (!isPlatformBrowser(this.platformId)) return;
     this.clickedOutside.emit(ev);
