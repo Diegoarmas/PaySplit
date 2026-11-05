@@ -1,5 +1,7 @@
 /* Shell and layout */
 .settings-shell {
+  --text-main: #f8fafc;
+  --text-muted: #cbd5e1;
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;

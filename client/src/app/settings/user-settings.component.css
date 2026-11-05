@@ -1,6 +1,8 @@
 :host {
   display: block;
   width: 100%;
+  --text-main: #f8fafc;
+  --text-muted: #cbd5e1;
 }
 
 * {

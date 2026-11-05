@@ -47,6 +47,8 @@ import { ClickOutsideDirective } from './shared/click-outside.directive';
       mat-toolbar {
         background-color: rgba(0, 0, 0, 0.7) !important;
         backdrop-filter: blur(10px);
+        --text-main: #f8fafc;
+        --text-muted: #cbd5e1;
       }
 
       main {
@@ -200,6 +202,12 @@ import { ClickOutsideDirective } from './shared/click-outside.directive';
         margin-top: 8px;
       }
 
+      :host-context([data-theme="light"]) .profile-menu-dropdown {
+        --text-main: #0f172a;
+        --text-muted: #475569;
+        --divider-color: rgba(15, 23, 42, 0.12);
+      }
+
       .menu-header {
         padding: 12px 16px;
         font-weight: 600;
@@ -224,7 +232,7 @@ import { ClickOutsideDirective } from './shared/click-outside.directive';
       }
 
       .menu-item:hover {
-        background: rgba(255, 255, 255, 0.05);
+        background: rgba(127, 127, 127, 0.12);
       }
 
       .menu-item mat-icon {

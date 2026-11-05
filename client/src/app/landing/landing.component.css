@@ -1,6 +1,10 @@
 /* Contenedor Principal */
 .landing-container {
   min-height: 100vh;
+  --text-main: #f8fafc;
+  --text-muted: #cbd5e1;
+  --text-gradient-start: #ffffff;
+  --text-gradient-end: #cbd5e1;
   color: var(--text-main);
   font-family: var(--font-family);
   overflow-x: hidden;
