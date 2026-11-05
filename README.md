@@ -1,4 +1,4 @@
-# Proyecto E18-P4
+# Proyecto PaySplit
 
 ## Levantar MongoDB y el servidor
 
