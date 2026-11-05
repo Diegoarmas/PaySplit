@@ -41,6 +41,9 @@ class MockAuthService {
       },
     ]);
   }
+  getDetailedBalancesForGroup(id: string) {
+    return of([]);
+  }
   createGasto(payload: any) {
     return of({ id: 'g1' });
   }
